@@ -3,91 +3,135 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
+from colorama import Fore, Style, init
+from datetime import datetime
 import time
+
+# Inicializa as cores no terminal do VS Code
+init(autoreset=True)
 
 class RastreadorPrecos:
     def __init__(self):
-        # Configuração do Navegador (Chrome)
         options = webdriver.ChromeOptions()
-        # options.add_argument('--headless') # Descomente para rodar sem abrir a janela
+        # User-Agent para evitar bloqueios da Lepok e Amazon
+        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        # options.add_argument('--headless') # Descomenta para rodar sem abrir a janela
+        
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         self.resultados = []
 
-    def pesquisar_amazon(self, item):
-        print(f"Buscando {item} na Amazon...")
-        self.driver.get(f"https://www.amazon.com.br/s?k={item}")
+    def formatar_brl(self, valor):
+        """Converte float para o formato de moeda R$"""
+        return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+    def extrair_valor(self, texto):
+        """Limpa o texto do preço vindo do site e converte para float"""
+        try:
+            limpo = texto.replace('R$', '').replace('.', '').replace(',', '.').strip()
+            return float(limpo)
+        except:
+            return 99999.0
+
+    # --- Métodos de Busca Individuais ---
+
+    def buscar_amazon(self, termo):
+        self.driver.get(f"https://www.amazon.com.br/s?k={termo}")
         time.sleep(2)
         try:
-            # Captura o preço e a URL do primeiro produto
-            preco_inteiro = self.driver.find_element(By.CLASS_NAME, "a-price-whole").text
-            preco_fracao = self.driver.find_element(By.CLASS_NAME, "a-price-fraction").text
-            valor = float(f"{preco_inteiro}.{preco_fracao}".replace('.', '').replace(',', '.'))
-            link = self.driver.current_url
-            return valor, link
+            inteiro = self.driver.find_element(By.CLASS_NAME, "a-price-whole").text
+            fracao = self.driver.find_element(By.CLASS_NAME, "a-price-fraction").text
+            return self.extrair_valor(f"{inteiro},{fracao}"), self.driver.current_url
         except:
             return 99999.0, ""
 
-    def pesquisar_kalunga(self, item):
-        print(f"Buscando {item} na Kalunga...")
-        self.driver.get(f"https://www.kalunga.com.br/busca/{item}")
+    def buscar_kalunga(self, termo):
+        self.driver.get(f"https://www.kalunga.com.br/busca/{termo}")
         time.sleep(2)
         try:
             preco_texto = self.driver.find_element(By.CSS_SELECTOR, ".produc-item__price").text
-            valor = float(preco_texto.replace('R$', '').replace('.', '').replace(',', '.').strip())
-            return valor, self.driver.current_url
+            return self.extrair_valor(preco_texto), self.driver.current_url
         except:
             return 99999.0, ""
 
-    def pesquisar_lepok(self, item):
-        print(f"Buscando {item} na Lepok...")
-        self.driver.get(f"https://www.lepok.com.br/busca?t={item}")
-        time.sleep(2)
+    def buscar_lepok(self, termo):
+        termo_url = termo.replace(" ", "%20")
+        self.driver.get(f"https://www.lepok.com.br/busca?t={termo_url}")
+        time.sleep(3)
         try:
-            preco_texto = self.driver.find_element(By.CLASS_NAME, "price").text
-            valor = float(preco_texto.replace('R$', '').replace('.', '').replace(',', '.').strip())
-            return valor, self.driver.current_url
+            # Seletores comuns na Lepok para preço
+            preco_texto = self.driver.find_element(By.CSS_SELECTOR, ".price, .vtex-product-summary-2-x-currencyInteger").text
+            return self.extrair_valor(preco_texto), self.driver.current_url
         except:
             return 99999.0, ""
+
+    # --- Processamento da Lista ---
 
     def processar_lista(self, arquivo_entrada):
-        # Lê o arquivo que você subiu (materiais-escolares)
+        # Carrega a planilha enviada
         df = pd.read_excel(arquivo_entrada)
+        print(f"{Fore.MAGENTA}{Style.BRIGHT}🚀 A iniciar procura REFINADA em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         
         for index, row in df.iterrows():
-            item = row['Item']
+            item_nome = str(row['Item'])
+            espec = str(row['Especificação']) if pd.notna(row['Especificação']) else ""
+            qtd = int(row['Quantidade Sugerida']) if pd.notna(row['Quantidade Sugerida']) else 1
             
-            # Pesquisa nos 3 sites
-            p_ama, l_ama = self.pesquisar_amazon(item)
-            p_kal, l_kal = self.pesquisar_kalunga(item)
-            p_lep, l_lep = self.pesquisar_lepok(item)
-            
-            # Compara quem é o mais barato
+            # Refinamento: Busca combinada (Item + Especificação)
+            termo_final = f"{item_nome} {espec}".strip()
+            print(f"\n{Fore.CYAN}🔎 Produto: {termo_final}")
+
+            # Variáveis separadas para cada site (Conforme sugerido)
+            v_ama, l_ama = self.buscar_amazon(termo_final)
+            v_kal, l_kal = self.buscar_kalunga(termo_final)
+            v_lep, l_lep = self.buscar_lepok(termo_final)
+
             ofertas = {
-                'Amazon': (p_ama, l_ama),
-                'Kalunga': (p_kal, l_kal),
-                'Lepok': (p_lep, l_lep)
+                'Amazon': (v_ama, l_ama),
+                'Kalunga': (v_kal, l_kal),
+                'Lepok': (v_lep, l_lep)
             }
-            
-            loja_barata = min(ofertas, key=lambda k: ofertas[k][0])
-            preco_final, link_final = ofertas[loja_barata]
-            
-            self.resultados.append({
-                'Item': item,
-                'Especificação': row['Especificação'],
-                'Qtd': row['Quantidade Sugerida'],
-                'Menor Preço': preco_final if preco_final != 99999.0 else "Não encontrado",
-                'Loja': loja_barata,
-                'URL': link_final
-            })
+
+            # Filtro de sanidade (Ignora erros de 99999 e valores lixo)
+            validos = {loja: dados for loja, dados in ofertas.items() if 0.50 < dados[0] < 90000}
+
+            if validos:
+                # Decide o vencedor matemático
+                loja_venc = min(validos, key=lambda k: validos[k][0])
+                preco_unitario, link_venc = validos[loja_venc]
+                
+                # Cálculo de economia e total
+                precos_encontrados = [v[0] for v in validos.values()]
+                economia_unitaria = max(precos_encontrados) - preco_unitario
+                preco_total = preco_unitario * qtd
+
+                print(f"{Fore.GREEN}✅ Melhor: {loja_venc} | Unit: {self.formatar_brl(preco_unitario)} | Total: {self.formatar_brl(preco_total)}")
+                
+                self.resultados.append({
+                    'Item': item_nome,
+                    'Busca Realizada': termo_final,
+                    'Qtd': qtd,
+                    'Menor Preço Unitário': self.formatar_brl(preco_unitario),
+                    'Preço Total (Qtd)': self.formatar_brl(preco_total),
+                    'Loja': loja_venc,
+                    'Economia Unitária': self.formatar_brl(economia_unitaria),
+                    'Link': link_venc,
+                    'Atualizado em': datetime.now().strftime("%d/%m/%Y %H:%M")
+                })
+            else:
+                print(f"{Fore.RED}❌ Sem resultados para: {termo_final}")
 
         self.driver.quit()
         
-        # Gera o NOVO arquivo Excel
+        # Guardar com carimbo de data/hora para o teu histórico
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        nome_ficheiro = f"relatorio_precos_{timestamp}.xlsx"
+        
         df_final = pd.DataFrame(self.resultados)
-        df_final.to_excel("lista_com_melhores_precos.xlsx", index=False)
-        print("\n✅ Projeto concluído! Arquivo 'lista_com_melhores_precos.xlsx' gerado.")
+        df_final.to_excel(nome_ficheiro, index=False)
+        
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}✅ PROCESSO FINALIZADO!")
+        print(f"{Fore.YELLOW}Relatório gerado com sucesso: {nome_ficheiro}")
 
-# Início do Projeto
 if __name__ == "__main__":
     bot = RastreadorPrecos()
     bot.processar_lista("lista_consolidada.xlsx")
