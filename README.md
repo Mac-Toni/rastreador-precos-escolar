@@ -45,6 +45,6 @@ Salve e execute. O robô será muito mais rápido!
 🤖 Desenvolvimento com Agentes
 Seguindo a evolução do VS Code como um Home for Multi-Agent Development, este código foi estruturado de forma modular para que agentes de IA possam estender as classes de busca para novos sites através de extensibilidade simples.
 
-![Pesquisa de material escolar](C:\Users\Paulo\variosprojetos\school-supplies-price-tracker\images\Ilustração escolar.png)
+![Pesquisa de material escolar](images/Ilustração escolar.png)
 
 Desenvolvido por Mac-Toni 🚀
