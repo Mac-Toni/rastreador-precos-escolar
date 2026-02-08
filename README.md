@@ -1,49 +1,52 @@
 # 📚 School Price Hunter (2026 Edition)
 
-Este projeto automatiza a pesquisa de preços de materiais escolares em três grandes varejistas brasileiros (**Amazon**, **Kalunga** e **Lepok**), consolidando os menores valores encontrados em um arquivo Excel (.xlsx).
+Este projeto automatiza a pesquisa de preços de materiais escolares em três gigantes do varejo brasileiro (**Amazon**, **Kalunga** e **Mercado Livre**), consolidando os menores valores encontrados em um relatório inteligente e autolimpante.
 
 ## 🚀 Tecnologias e Ferramentas
-Este projeto foi desenvolvido utilizando o que há de mais moderno no ecossistema de desenvolvimento:
+Desenvolvido com foco em performance e escalabilidade:
 
-* **Linguagem:** Python 3.x
-* **Automação:** Selenium & WebDriver Manager
+* **Linguagem:** Python 3.12+
+* **Automação:** Selenium & WebDriver Manager (Chrome)
 * **Manipulação de Dados:** Pandas & Openpyxl
-* **Editor:** [Visual Studio Code](https://code.visualstudio.com/) **v1.109 (January 2026 Release)**
-    * *Nota: O projeto aproveita as novas capacidades de Agentic Development e o Integrated Browser da versão 1.109 para testes de scraping em tempo real.*
+* **Interface de Terminal:** Colorama (Status em cores)
+* **Editor:** [Visual Studio Code](https://code.visualstudio.com/) **v1.109+**
+    * *Nota: Otimizado para Agentic Development e inspeção via Integrated Browser.*
 
-## 📋 Funcionalidades
-- [x] Leitura de lista de materiais via arquivo Excel (.xlsx).
-- [x] Web Scraping automatizado na Amazon, Kalunga e Lepok.
-- [x] Comparação inteligente de preços (busca o menor valor).
-- [x] Geração de relatório final: `lista_com_melhores_precos.xlsx`.
+## 📋 Funcionalidades de Elite
+- [x] **Busca Multi-Varejista:** Scrape sincronizado na Amazon, Kalunga e Mercado Livre.
+- [x] **Teste de Mesa Virtual:** O relatório captura a **descrição real encontrada no site** para conferência de precisão.
+- [x] **Gestão de Armazenamento:** Função "Faxina" que mantém apenas os **3 últimos relatórios** na pasta, evitando acúmulo de arquivos.
+- [x] **Cálculo de Economia:** Identifica a diferença entre o menor e o maior preço encontrado para cada item.
+- [x] **Relatórios Inteligentes:** Arquivos gerados via Pandas com timestamp para histórico organizado.
 
 ## 🛠️ Como Instalar e Rodar
 
 1. **Clone o repositório:**
    ```bash
    git clone [https://github.com/Mac-Toni/rastreador-precos-escolar.git](https://github.com/Mac-Toni/rastreador-precos-escolar.git)
-   
+   cd rastreador-precos-escolar
 Instale as dependências:
 
 Bash
 pip install -r requirements.txt
-Prepare sua lista: Certifique-se de que o arquivo lista_consolidada.xlsx está na raiz do projeto.
+Prepare sua lista: Certifique-se de que o arquivo lista_consolidada.xlsx está na raiz do projeto com as colunas: Item, Especificação e Quantidade Sugerida.
 
 Execute o script:
 
 Bash
 python main.py
-💡 Dica de Execução (Modo Silencioso)
-O projeto está configurado para abrir o navegador e mostrar as buscas em tempo real. Se você desejar que o robô trabalhe em segundo plano (sem abrir janelas):
+📁 Estrutura de Saída
+O bot organiza os resultados automaticamente:
 
-No arquivo main.py, localize a linha 13: options.add_argument('--headless').
+Os relatórios são salvos na pasta /relatorios_precos.
+
+Regra de Retenção: Apenas os 3 arquivos mais recentes são preservados para economizar espaço.
+
+💡 Dica de Execução (Modo Silencioso)
+Se você desejar que o robô trabalhe em segundo plano (sem abrir janelas):
+
+No arquivo main.py, localize a linha: options.add_argument('--headless').
 
 Remova o símbolo # do início da linha para ativá-la.
-
-Salve e execute. O robô será muito mais rápido!
-
-🤖 Desenvolvimento com Agentes
-Seguindo a evolução do VS Code como um Home for Multi-Agent Development, este código foi estruturado de forma modular para que agentes de IA possam estender as classes de busca para novos sites através de extensibilidade simples.
-
 
 Desenvolvido por Mac-Toni 🚀
