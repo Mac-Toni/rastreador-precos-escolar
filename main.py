@@ -3,139 +3,139 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from colorama import Fore, Style, init
 from datetime import datetime
-import time
 import os
+import re
+import time
 
 init(autoreset=True)
+
+SITES_CONFIG = {
+    'Amazon': {
+        'url': "https://www.amazon.com.br/s?k=",
+        'item': ["h2 a span", "span.a-size-base-plus", ".s-line-clamp-2"],
+        'preco_inteiro': [".a-price-whole"],
+        'preco_fracao': [".a-price-fraction"]
+    },
+    'Kalunga': {
+        'url': "https://www.kalunga.com.br/",
+        'search_box': "input#search-input, input.search-input",
+        'item': [".produc-item__title", "h2.produc-item__title", ".product-item__title"],
+        'preco_completo': [".produc-item__price", ".product-item__price"]
+    },
+    'Mercado Livre': {
+        'url': "https://lista.mercadolivre.com.br/",
+        'item': [".poly-component__title", ".ui-search-item__title", "h2.ui-search-item__title"],
+        'preco_inteiro': [".poly-price__current .andes-money-amount__fraction", ".andes-money-amount__fraction"],
+        'preco_fracao': [".poly-price__current .andes-money-amount__cents", ".andes-money-amount__cents"]
+    }
+}
 
 class RastreadorPrecos:
     def __init__(self):
         options = webdriver.ChromeOptions()
-        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-        # options.add_argument('--headless') 
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
         
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        self.driver.execute_script("document.title = 'Material Escolar'")
+        self.wait = WebDriverWait(self.driver, 10)
         self.resultados = []
 
-    def formatar_brl(self, valor):
-        return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    def extrair_valor(self, texto):
+    def limpar_valor(self, texto):
+        if not texto: return 99999.0
         try:
-            limpo = texto.replace('R$', '').replace('.', '').replace(',', '.').strip()
-            return float(limpo)
-        except:
-            return 99999.0
+            limpo = texto.replace('.', '').replace(',', '.')
+            res = re.findall(r"\d+\.\d+|\d+", limpo)
+            return float(res[0]) if res else 99999.0
+        except: return 99999.0
 
-    def limpar_relatorios_antigos(self, pasta, limite=3):
-        arquivos = [os.path.join(pasta, f) for f in os.listdir(pasta) if f.endswith('.xlsx')]
-        arquivos.sort(key=os.path.getmtime)
-        if len(arquivos) > limite:
-            for arquivo in arquivos[:-limite]:
-                try:
-                    os.remove(arquivo)
-                    print(f"{Fore.YELLOW}🗑️ Faxina: Removendo antigo: {os.path.basename(arquivo)}")
-                except: pass
+    def tentar_elementos(self, seletores):
+        for seletor in seletores:
+            try:
+                elemento = self.driver.find_element(By.CSS_SELECTOR, seletor)
+                if elemento.is_displayed(): return elemento
+            except: continue
+        return None
 
-    def buscar_amazon(self, termo):
-        self.driver.get(f"https://www.amazon.com.br/s?k={termo}")
-        time.sleep(2)
+    def buscar_kalunga_manual(self, termo):
         try:
-            nome_site = self.driver.find_element(By.CSS_SELECTOR, "h2 a span").text
-            inteiro = self.driver.find_element(By.CLASS_NAME, "a-price-whole").text
-            fracao = self.driver.find_element(By.CLASS_NAME, "a-price-fraction").text
-            return self.extrair_valor(f"{inteiro},{fracao}"), self.driver.current_url, nome_site
-        except:
+            self.driver.get(SITES_CONFIG['Kalunga']['url'])
+            busca = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, SITES_CONFIG['Kalunga']['search_box'])))
+            busca.clear()
+            busca.send_keys(termo)
+            busca.send_keys(Keys.ENTER)
+            time.sleep(3.5)
+            el_nome = self.tentar_elementos(SITES_CONFIG['Kalunga']['item'])
+            el_preco = self.tentar_elementos(SITES_CONFIG['Kalunga']['preco_completo'])
+            if el_nome and el_preco:
+                return self.limpar_valor(el_preco.text), self.driver.current_url, el_nome.text
             return 99999.0, "", "Não encontrado"
+        except: return 99999.0, "", "Erro Kalunga"
 
-    def buscar_kalunga(self, termo):
-        self.driver.get(f"https://www.kalunga.com.br/busca/{termo}")
-        time.sleep(2)
+    def buscar_loja(self, loja, termo):
+        if loja == 'Kalunga': return self.buscar_kalunga_manual(termo)
+        config = SITES_CONFIG[loja]
+        self.driver.get(f"{config['url']}{termo.replace(' ', '+')}")
         try:
-            nome_site = self.driver.find_element(By.CSS_SELECTOR, ".produc-item__title").text
-            preco_texto = self.driver.find_element(By.CSS_SELECTOR, ".produc-item__price").text
-            return self.extrair_valor(preco_texto), self.driver.current_url, nome_site
-        except:
-            return 99999.0, "", "Não encontrado"
-
-    def buscar_mercadolivre(self, termo):
-        """Nova loja substituindo a Gimba"""
-        try:
-            self.driver.get(f"https://lista.mercadolivre.com.br/{termo}")
-            time.sleep(2)
-            # Pega o primeiro título e preço da lista
-            nome_site = self.driver.find_element(By.CLASS_NAME, "ui-search-item__title").text
-            preco_texto = self.driver.find_element(By.CLASS_NAME, "andes-money-amount__fraction").text
-            # Se houver centavos, o ML usa uma estrutura diferente, mas para busca rápida o inteiro resolve ou pegamos o container
-            return self.extrair_valor(preco_texto), self.driver.current_url, nome_site
-        except:
-            return 99999.0, "", "Não encontrado"
+            time.sleep(2.5)
+            self.driver.execute_script("window.scrollTo(0, 500);")
+            el_nome = self.tentar_elementos(config['item'])
+            if not el_nome: return 99999.0, "", "Não encontrado"
+            valor = 99999.0
+            if 'preco_completo' in config:
+                el_preco = self.tentar_elementos(config['preco_completo'])
+                if el_preco: valor = self.limpar_valor(el_preco.text)
+            else:
+                el_int = self.tentar_elementos(config['preco_inteiro'])
+                if el_int:
+                    frac = "00"
+                    el_frac = self.tentar_elementos(config['preco_fracao'])
+                    if el_frac: frac = el_frac.text
+                    valor = self.limpar_valor(f"{el_int.text}.{frac}")
+            return valor, self.driver.current_url, el_nome.text
+        except: return 99999.0, "", "Erro na leitura"
 
     def processar_lista(self, arquivo_entrada):
-        if not os.path.exists(arquivo_entrada):
-            print(f"{Fore.RED}❌ Erro: '{arquivo_entrada}' não encontrado!")
-            return
-
         df = pd.read_excel(arquivo_entrada)
-        print(f"{Fore.MAGENTA}{Style.BRIGHT}🚀 Iniciando Busca Refinada (Sem Gimba, Com ML)")
-
-        for index, row in df.iterrows():
-            item_nome = str(row['Item'])
+        print(f"{Fore.MAGENTA}🚀 BUSCA INICIADA - Janela: Material Escolar")
+        for _, row in df.iterrows():
+            item_nome = str(row['Item']).strip()
             espec = str(row['Especificação']) if pd.notna(row['Especificação']) else ""
-            qtd = int(row['Quantidade Sugerida']) if pd.notna(row['Quantidade Sugerida']) else 1
-            termo_final = f"{item_nome} {espec}".strip()
-
-            print(f"\n{Fore.CYAN}🔎 Pesquisando: {termo_final}")
-
-            v_ama, l_ama, n_ama = self.buscar_amazon(termo_final)
-            v_kal, l_kal, n_kal = self.buscar_kalunga(termo_final)
-            v_ml, l_ml, n_ml = self.buscar_mercadolivre(termo_final)
-
-            ofertas = {
-                'Amazon': (v_ama, l_ama, n_ama),
-                'Kalunga': (v_kal, l_kal, n_kal),
-                'Mercado Livre': (v_ml, l_ml, n_ml)
-            }
-
-            validos = {loja: dados for loja, dados in ofertas.items() if 0.50 < dados[0] < 90000}
-
-            if validos:
-                loja_venc = min(validos, key=lambda k: validos[k][0])
-                preco_unit, link_venc, nome_venc = validos[loja_venc]
-                
-                precos_encontrados = [v[0] for v in validos.values()]
-                economia = max(precos_encontrados) - preco_unit
-
-                print(f"{Fore.GREEN}✅ Vencedor: {loja_venc} | {self.formatar_brl(preco_unit)}")
-                
+            termo_busca = f"{item_nome} {espec}".strip()
+            print(f"\n🔎 Analisando: {Fore.YELLOW}{termo_busca}")
+            ofertas = {}
+            for loja in SITES_CONFIG.keys():
+                val, link, nome_site = self.buscar_loja(loja, termo_busca)
+                if 1.00 < val < 80000:
+                    ofertas[loja] = (val, link, nome_site)
+                    print(f"  ∟ {loja}: R$ {val:.2f}")
+            if ofertas:
+                venc = min(ofertas, key=lambda k: ofertas[k][0])
+                v, l, n = ofertas[venc]
                 self.resultados.append({
-                    'Item Original': item_nome,
-                    'Especificação Enviada': espec,
-                    'Descrição no Site (Vencedor)': nome_venc,
-                    'Qtd': qtd,
-                    'Menor Preço Unitário': self.formatar_brl(preco_unit),
-                    'Preço Total': self.formatar_brl(preco_unit * qtd),
-                    'Loja': loja_venc,
-                    'Economia Unitária': self.formatar_brl(economia),
-                    'Link': link_venc,
-                    'Data': datetime.now().strftime("%d/%m/%Y %H:%M")
+                    'Item': item_nome,
+                    'Qtd': row['Quantidade Sugerida'],
+                    'Melhor Preço': f"R$ {v:.2f}",
+                    'Total': f"R$ {v * int(row['Quantidade Sugerida']):.2f}",
+                    'Loja': venc,
+                    'Link': l,
+                    'Nome no Site': n
                 })
-            else:
-                print(f"{Fore.RED}❌ Nenhum resultado confiável.")
+        self.finalizar()
 
+    def finalizar(self):
         self.driver.quit()
-
         if self.resultados:
-            pasta = "relatorios_precos"
-            os.makedirs(pasta, exist_ok=True)
-            caminho = os.path.join(pasta, f"relatorio_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
-            pd.DataFrame(self.resultados).to_excel(caminho, index=False)
-            print(f"\n{Fore.GREEN}✅ Relatório salvo com sucesso!")
-            self.limpar_relatorios_antigos(pasta, limite=3)
-        else:
-            print(f"\n{Fore.RED}❌ Nenhum dado coletado.")
+            # Nome do arquivo atualizado conforme solicitado
+            path = "Relatório Material Escolar.xlsx"
+            pd.DataFrame(self.resultados).to_excel(path, index=False)
+            print(f"\n{Fore.GREEN}✨ Relatório salvo em: {path}")
 
 if __name__ == "__main__":
     bot = RastreadorPrecos()
