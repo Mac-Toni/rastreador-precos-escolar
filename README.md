@@ -2,51 +2,65 @@
 
 Este projeto automatiza a pesquisa de preços de materiais escolares em três gigantes do varejo brasileiro (**Amazon**, **Kalunga** e **Mercado Livre**), consolidando os menores valores encontrados em um relatório inteligente e autolimpante.
 
-## 🚀 Tecnologias e Ferramentas
-Desenvolvido com foco em performance e escalabilidade:
+## 1. 🚀 Tecnologias e Ferramentas
+- Linguagem: Python 3.12+
+- Automação: Selenium & WebDriver Manager (Chrome)
+- Manipulação de Dados: Pandas & Openpyxl
+- Interface de Terminal: Colorama (status em cores)
+- Editor recomendado: Visual Studio Code v1.109+
 
-* **Linguagem:** Python 3.12+
-* **Automação:** Selenium & WebDriver Manager (Chrome)
-* **Manipulação de Dados:** Pandas & Openpyxl
-* **Interface de Terminal:** Colorama (Status em cores)
-* **Editor:** [Visual Studio Code](https://code.visualstudio.com/) **v1.109+**
-    * *Nota: Otimizado para Agentic Development e inspeção via Integrated Browser.*
+## 2. 📋 Funcionalidades
+- [x] Busca Multi-Varejista: Amazon, Kalunga e Mercado Livre.
+- [x] Captura Real: O relatório traz a descrição exata encontrada no site.
+- [x] Gestão de Relatórios: Apenas os 3 últimos relatórios são mantidos.
+- [x] Cálculo de Economia: Mostra a diferença entre menor e maior preço por item.
+- [x] Relatórios Inteligentes: Arquivos Excel com timestamp para histórico organizado.
 
-## 📋 Funcionalidades de Elite
-- [x] **Busca Multi-Varejista:** Scrape sincronizado na Amazon, Kalunga e Mercado Livre.
-- [x] **Teste de Mesa Virtual:** O relatório captura a **descrição real encontrada no site** para conferência de precisão.
-- [x] **Gestão de Armazenamento:** Função "Faxina" que mantém apenas os **3 últimos relatórios** na pasta, evitando acúmulo de arquivos.
-- [x] **Cálculo de Economia:** Identifica a diferença entre o menor e o maior preço encontrado para cada item.
-- [x] **Relatórios Inteligentes:** Arquivos gerados via Pandas com timestamp para histórico organizado.
+## 3. 🛠️ Instalação e Execução
 
-## 🛠️ Como Instalar e Rodar
+### 3.1 Clone o repositório
+git clone https://github.com/Mac-Toni/rastreador-precos-escolar.git
+cd rastreador-precos-escolar
 
-1. **Clone o repositório:**
-   ```bash
-   git clone [https://github.com/Mac-Toni/rastreador-precos-escolar.git](https://github.com/Mac-Toni/rastreador-precos-escolar.git)
-   cd rastreador-precos-escolar
-Instale as dependências:
-
-Bash
+### 3.2 Instale as dependências
 pip install -r requirements.txt
-Prepare sua lista: Certifique-se de que o arquivo lista_consolidada.xlsx está na raiz do projeto com as colunas: Item, Especificação e Quantidade Sugerida.
 
-Execute o script:
+### 3.3 Prepare sua lista
+Certifique-se de que o arquivo lista_consolidada.xlsx está na raiz do projeto com as colunas:
+- Item
+- Especificação
+- Quantidade Sugerida
 
-Bash
+### 3.4 Execute o rastreador principal
 python main.py
-📁 Estrutura de Saída
-O bot organiza os resultados automaticamente:
 
-Os relatórios são salvos na pasta /relatorios_precos.
+### 3.5 Teste os seletores manualmente (opcional)
+python teste_lojas.py
 
-Regra de Retenção: Apenas os 3 arquivos mais recentes são preservados para economizar espaço.
+## 4. 📁 Estrutura de Saída
+- Relatórios salvos em /relatorios_precos.
+- Nome do arquivo: Relatório_YYYYMMDD_HHMMSS.xlsx.
+- Apenas os 3 mais recentes são preservados.
 
-💡 Dica de Execução (Modo Silencioso)
-Se você desejar que o robô trabalhe em segundo plano (sem abrir janelas):
+## 5. 💡 Dica de Execução (Modo Silencioso)
+Se quiser rodar sem abrir janelas do navegador:
+- No main.py, mantenha a linha:
+options.add_argument("--headless")
 
-No arquivo main.py, localize a linha: options.add_argument('--headless').
+---
 
-Remova o símbolo # do início da linha para ativá-la.
+## 6. 📂 Estrutura do Projeto
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        07/02/2026     14:34                relatorios_precos
+-a----        12/02/2026     20:34           7796 lista_consolidada.xlsx
+-a----        13/02/2026     22:30           7271 main.py
+-a----        13/02/2026     22:41           2564 README.md
+-a----        13/02/2026     21:07           7296 Relatório Material Escolar.xlsx
+-a----        07/02/2026     14:51             55 requirements.txt
+-a----        13/02/2026     22:30           2922 teste_lojas.py
+
+---
 
 Desenvolvido por Mac-Toni 🚀
