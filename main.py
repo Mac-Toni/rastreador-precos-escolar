@@ -17,21 +17,21 @@ init(autoreset=True)
 SITES_CONFIG = {
     'Amazon': {
         'url': "https://www.amazon.com.br/s?k=",
-        'item': ["h2 a span", "span.a-size-base-plus", ".s-line-clamp-2"],
+        'item': [".a-size-medium.a-color-base.a-text-normal"],
         'preco_inteiro': [".a-price-whole"],
         'preco_fracao': [".a-price-fraction"]
     },
     'Kalunga': {
         'url': "https://www.kalunga.com.br/",
-        'search_box': "input#search-input, input.search-input",
-        'item': [".produc-item__title", "h2.produc-item__title", ".product-item__title"],
-        'preco_completo': [".produc-item__price", ".product-item__price"]
+        'search_box': "input#input-busca",  # seletor atualizado
+        'item': [".nm-product-name", ".product-item__title"],
+        'preco_completo': [".nm-price-value", ".product-item__price"]
     },
     'Mercado Livre': {
         'url': "https://lista.mercadolivre.com.br/",
-        'item': [".poly-component__title", ".ui-search-item__title", "h2.ui-search-item__title"],
-        'preco_inteiro': [".poly-price__current .andes-money-amount__fraction", ".andes-money-amount__fraction"],
-        'preco_fracao': [".poly-price__current .andes-money-amount__cents", ".andes-money-amount__cents"]
+        'item': [".ui-search-item__title"],
+        'preco_inteiro': [".andes-money-amount__fraction"],
+        'preco_fracao': [".andes-money-amount__cents"]
     }
 }
 
@@ -41,7 +41,8 @@ class RastreadorPrecos:
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
-        
+        options.add_argument("--headless")  # modo silencioso
+
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         self.driver.execute_script("document.title = 'Material Escolar'")
         self.wait = WebDriverWait(self.driver, 10)
@@ -50,10 +51,12 @@ class RastreadorPrecos:
     def limpar_valor(self, texto):
         if not texto: return 99999.0
         try:
-            limpo = texto.replace('.', '').replace(',', '.')
-            res = re.findall(r"\d+\.\d+|\d+", limpo)
-            return float(res[0]) if res else 99999.0
-        except: return 99999.0
+            limpo = texto.strip().replace("R$", "").replace(" ", "")
+            limpo = limpo.replace(".", "").replace(",", ".")
+            return float(limpo)
+        except Exception as e:
+            print("Erro limpar_valor:", e, texto)
+            return 99999.0
 
     def tentar_elementos(self, seletores):
         for seletor in seletores:
@@ -76,7 +79,9 @@ class RastreadorPrecos:
             if el_nome and el_preco:
                 return self.limpar_valor(el_preco.text), self.driver.current_url, el_nome.text
             return 99999.0, "", "Não encontrado"
-        except: return 99999.0, "", "Erro Kalunga"
+        except Exception as e:
+            print("Erro Kalunga:", e)
+            return 99999.0, "", "Erro Kalunga"
 
     def buscar_loja(self, loja, termo):
         if loja == 'Kalunga': return self.buscar_kalunga_manual(termo)
@@ -97,9 +102,11 @@ class RastreadorPrecos:
                     frac = "00"
                     el_frac = self.tentar_elementos(config['preco_fracao'])
                     if el_frac: frac = el_frac.text
-                    valor = self.limpar_valor(f"{el_int.text}.{frac}")
+                    valor = self.limpar_valor(f"{el_int.text},{frac}")
             return valor, self.driver.current_url, el_nome.text
-        except: return 99999.0, "", "Erro na leitura"
+        except Exception as e:
+            print("Erro na leitura:", e)
+            return 99999.0, "", "Erro na leitura"
 
     def processar_lista(self, arquivo_entrada):
         df = pd.read_excel(arquivo_entrada)
@@ -132,10 +139,21 @@ class RastreadorPrecos:
     def finalizar(self):
         self.driver.quit()
         if self.resultados:
-            # Nome do arquivo atualizado conforme solicitado
-            path = "Relatório Material Escolar.xlsx"
+            if not os.path.exists("relatorios_precos"):
+                os.makedirs("relatorios_precos")
+            path = f"relatorios_precos/Relatório_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             pd.DataFrame(self.resultados).to_excel(path, index=False)
             print(f"\n{Fore.GREEN}✨ Relatório salvo em: {path}")
+
+            # Faxina: manter apenas os 3 mais recentes
+            arquivos = sorted(
+                [os.path.join("relatorios_precos", f) for f in os.listdir("relatorios_precos")],
+                key=os.path.getmtime,
+                reverse=True
+            )
+            for velho in arquivos[3:]:
+                os.remove(velho)
+                print(f"{Fore.RED}🗑️ Relatório removido: {velho}")
 
 if __name__ == "__main__":
     bot = RastreadorPrecos()
