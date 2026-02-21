@@ -8,10 +8,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from colorama import Fore, init
 from datetime import datetime
+from bs4 import BeautifulSoup
+import logging
 import os
-import time
 
 init(autoreset=True)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 SITES_CONFIG = {
     'Amazon': {
@@ -41,31 +44,29 @@ class RastreadorPrecos:
         options = webdriver.ChromeOptions()
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
         options.add_argument("--headless")
 
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-        self.wait = WebDriverWait(self.driver, 15)  # espera maior para ML
+        self.wait = WebDriverWait(self.driver, 15)
         self.resultados = []
 
     def limpar_valor(self, texto):
-        if not texto: return 99999.0
+        if not texto:
+            return 99999.0
         try:
             limpo = texto.strip().replace("R$", "").replace(" ", "")
+            # Corrige vírgulas e pontos duplicados
+            while ".." in limpo:
+                limpo = limpo.replace("..", ".")
+            while ",," in limpo:
+                limpo = limpo.replace(",,", ",")
+            # Normaliza separadores
             limpo = limpo.replace(".", "").replace(",", ".")
             return float(limpo)
         except Exception as e:
-            print("Erro limpar_valor:", e, texto)
+            logging.warning(f"Erro limpar_valor: {e} | Texto original: {texto} | Texto limpo: {limpo}")
             return 99999.0
-
-    def tentar_elementos(self, seletores):
-        for seletor in seletores:
-            elementos = self.driver.find_elements(By.CSS_SELECTOR, seletor)
-            if elementos:
-                for el in elementos:
-                    if el.is_displayed():
-                        return el
-        return None
 
     def buscar_loja(self, loja, termo):
         config = SITES_CONFIG[loja]
@@ -76,40 +77,34 @@ class RastreadorPrecos:
             busca.send_keys(termo)
             busca.send_keys(Keys.ENTER)
 
-            if loja == 'Kalunga':
-                self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config['item'][0])))
-                time.sleep(2.5)
-                el_nome = self.tentar_elementos(config['item'])
-                el_preco = self.tentar_elementos(config['preco_completo'])
-                if el_nome and el_preco:
-                    return self.limpar_valor(el_preco.text), self.driver.current_url, el_nome.text
+            # Espera pelo carregamento dos resultados
+            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config['item'][0])))
 
-            elif loja == 'Amazon':
-                self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config['item'][0])))
-                time.sleep(2.5)
-                el_nome = self.tentar_elementos(config['item'])
-                el_int = self.tentar_elementos(config['preco_inteiro'])
-                el_frac = self.tentar_elementos(config['preco_fracao'])
-                if el_nome and el_int:
-                    frac = el_frac.text if el_frac else "00"
-                    return self.limpar_valor(f"{el_int.text},{frac}"), self.driver.current_url, el_nome.text
+            # Coleta múltiplos resultados com BeautifulSoup
+            html = self.driver.page_source
+            soup = BeautifulSoup(html, "html.parser")
 
-            elif loja == 'Mercado Livre':
-                # espera explícita pelo primeiro produto
-                self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config['item'][0])))
-                time.sleep(5)  # dá mais tempo para carregar
-                el_nome = self.tentar_elementos(config['item'])
-                el_int = self.tentar_elementos(config['preco_inteiro'])
-                el_frac = self.tentar_elementos(config['preco_fracao'])
-                if el_nome and el_int:
-                    frac = el_frac.text if el_frac else "00"
-                    return self.limpar_valor(f"{el_int.text},{frac}"), self.driver.current_url, el_nome.text
+            nomes = [el.get_text(strip=True) for sel in config['item'] for el in soup.select(sel)]
+            precos = []
 
-            return 99999.0, "", "Não encontrado"
+            if 'preco_completo' in config:
+                precos = [self.limpar_valor(el.get_text(strip=True)) for sel in config['preco_completo'] for el in soup.select(sel)]
+            else:
+                inteiros = [el.get_text(strip=True) for sel in config.get('preco_inteiro', []) for el in soup.select(sel)]
+                fracs = [el.get_text(strip=True) for sel in config.get('preco_fracao', []) for el in soup.select(sel)]
+                precos = [self.limpar_valor(f"{i},{fracs[idx] if idx < len(fracs) else '00'}") for idx, i in enumerate(inteiros)]
+
+            resultados = []
+            for nome, preco in zip(nomes, precos):
+                if 1.00 < preco < 80000:
+                    resultados.append((preco, self.driver.current_url, nome))
+
+            logging.info(f"{loja} retornou {len(resultados)} resultados para '{termo}'")
+            return resultados if resultados else [(99999.0, "", "Não encontrado")]
 
         except Exception as e:
-            print(f"Erro {loja}:", e)
-            return 99999.0, "", f"Erro {loja}"
+            logging.error(f"Erro {loja}: {e}")
+            return [(99999.0, "", f"Erro {loja}")]
 
     def processar_lista(self, arquivo_entrada):
         df = pd.read_excel(arquivo_entrada)
@@ -121,10 +116,12 @@ class RastreadorPrecos:
             print(f"\n🔎 Analisando: {Fore.YELLOW}{termo_busca}")
             ofertas = {}
             for loja in SITES_CONFIG.keys():
-                val, link, nome_site = self.buscar_loja(loja, termo_busca)
-                if 1.00 < val < 80000:
-                    ofertas[loja] = (val, link, nome_site)
-                    print(f"  ∟ {loja}: R$ {val:.2f}")
+                resultados = self.buscar_loja(loja, termo_busca)
+                for val, link, nome_site in resultados:
+                    if 1.00 < val < 80000:
+                        ofertas[loja] = (val, link, nome_site)
+                        print(f"  ∟ {loja}: R$ {val:.2f}")
+                        break  # mantém apenas o primeiro válido
             if ofertas:
                 venc = min(ofertas, key=lambda k: ofertas[k][0])
                 v, l, n = ofertas[venc]

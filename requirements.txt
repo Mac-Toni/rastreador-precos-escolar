@@ -3,3 +3,5 @@ pandas
 openpyxl
 webdriver-manager
 colorama
+bs4
+beautifulsoup4==4.14.3
